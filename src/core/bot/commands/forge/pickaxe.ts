@@ -51,19 +51,21 @@ createApplicationCommand({
     const choices = res
       .filter((pickaxe: any) => {
         if (!focused) return true;
-
-        return pickaxe.name.toLowerCase().includes(focused);
+        return String(pickaxe.name ?? '')
+          .toLowerCase()
+          .includes(focused);
       })
       .slice(0, 25)
       .map((pickaxe: any) => ({
-        name: pickaxe.name,
-        value: pickaxe.name,
-      }));
+        name: String(pickaxe.name ?? 'Unknown Pickaxe'),
+        value: String(pickaxe.name ?? ''),
+      }))
+      .filter((pickaxe: any) => pickaxe.value);
 
     return interaction.respond({ choices });
   },
   async run(bot, interaction, options) {
-    const res = await makeRequest(`http://localhost:9999/pickaxes`, {
+    const res = await makeRequest('http://localhost:9999/pickaxes', {
       method: RequestMethod.GET,
       response: ResponseType.JSON,
       params: {
@@ -74,46 +76,72 @@ createApplicationCommand({
       },
     });
 
+    const components: any[] = [
+      {
+        type: MessageComponentTypes.Section,
+        components: [
+          {
+            type: MessageComponentTypes.TextDisplay,
+            content: `# ${res.name ?? 'Unknown Pickaxe'}\n-# ${res.rarity ?? 'Unknown rarity'}`,
+          },
+        ],
+        ...(res.image
+          ? {
+              accessory: {
+                type: MessageComponentTypes.Thumbnail,
+                media: { url: res.image },
+              },
+            }
+          : {}),
+      },
+    ];
+
+    if (res.description) {
+      components.push({
+        type: MessageComponentTypes.TextDisplay,
+        content: `### Description\n> ${String(res.description).replace(/\n/g, '\n> ')}`,
+      });
+    }
+
+    components.push({ type: MessageComponentTypes.Separator });
+    components.push({
+      type: MessageComponentTypes.TextDisplay,
+      content: [
+        res.mine_power != null ? `- **Mine Power:** ${res.mine_power}` : '',
+        res.mine_speed != null ? `- **Mine Speed:** ${res.mine_speed}` : '',
+        res.luck_boost != null ? `- **Luck Boost:** ${res.luck_boost}` : '',
+        res.rune_slots != null ? `- **Rune Slots:** ${res.rune_slots}` : '',
+        res.rune_price != null ? `- **Rune Price:** ${res.rune_price}` : '',
+        res.price != null ? `- **Price:** ${res.price}` : '',
+        res.tickets != null ? `- **Tickets:** ${res.tickets}` : '',
+        res.goblin_price != null ? `- **Goblin Price:** ${res.goblin_price}` : '',
+        res.sell_price != null ? `- **Sell Price:** ${res.sell_price}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n') || '-# No stat data is available for this pickaxe.',
+    });
+
+    if (res.requirement) {
+      const typeLabel =
+        res.requirement.type === 'quest'
+          ? 'Quest requirement'
+          : res.requirement.type === 'item'
+            ? 'Item requirement'
+            : 'Unlock requirement';
+      components.push({ type: MessageComponentTypes.Separator });
+      components.push({
+        type: MessageComponentTypes.TextDisplay,
+        content: `### How to Obtain\n- **${typeLabel}:** ${res.requirement.requirement}${
+          res.requirement.details ? `\n-# ${res.requirement.details}` : ''
+        }`,
+      });
+    }
+
     await interaction.edit({
       components: [
         {
           type: MessageComponentTypes.Container,
-          components: [
-            {
-              type: MessageComponentTypes.Section,
-              components: [
-                {
-                  type: MessageComponentTypes.TextDisplay,
-                  content: `# ${res.name}\n-# ${res.rarity}\n*${res.description}*`,
-                },
-              ],
-              accessory: {
-                type: MessageComponentTypes.Thumbnail,
-                media: {
-                  url: res.image,
-                },
-              },
-            },
-            {
-              type: MessageComponentTypes.Separator,
-            },
-            {
-              type: MessageComponentTypes.TextDisplay,
-              content: [
-                `- Mine Power: **${res.mine_power}**`,
-                res.mine_speed ? `- Mine Speed: **${res.mine_speed}**` : '',
-                res.luck_boost ? `- Luck Boost: **${res.luck_boost}**` : '',
-                res.rune_slots ? `- Rune Slots: **${res.rune_slots}**` : '',
-                res.rune_price ? `- Rune Price: **${res.rune_price}**` : '',
-                res.price ? `- Price: **${res.price}**` : '',
-                res.tickets ? `- Tickets: **${res.tickets}**` : '',
-                res.goblin_price ? `- Goblin Price: **${res.goblin_price}**` : '',
-                res.sell_price ? `- Sell Price: **${res.sell_price}**` : '',
-              ]
-                .filter(Boolean)
-                .join('\n'),
-            },
-          ],
+          components,
         },
       ],
       flags: MessageFlags.IsComponentsV2,

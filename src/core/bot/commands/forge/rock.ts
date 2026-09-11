@@ -106,7 +106,7 @@ createApplicationCommand({
             },
             {
               type: MessageComponentTypes.TextDisplay,
-              content: `- Health: **${res.health}**\n- Experience: **${res.exp}**\n- Required Damage: **${res.required_damage}**${res.spawn_count_range ? `\n- Spawn Count Range: **${res.spawn_count_range.min} - ${res.spawn_count_range.max}**` : ''}${res.luck_boost ? `\n- Luck Boost: **${res.luck_boost}x**` : ''}`,
+              content: `- Health: **${res.health}**\n- Experience: **${res.exp}**\n- Required Damage: **${res.required_damage}**${res.spawn_count_range ? `\n- Spawn Count Range: **${res.spawn_count_range.min} - ${res.spawn_count_range.max}**` : ''}${res.luck_boost != null ? `\n- Luck Boost: **${res.luck_boost}**` : ''}`,
             },
           ],
         },

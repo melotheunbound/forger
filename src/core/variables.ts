@@ -15,7 +15,7 @@ export const SHARD_SERVER_URL = env.get('shard_server_url', true);
 export const REDIS_PASSWORD = env.get('redis_password', true);
 export const REDIS_HOST = env.get('redis_host', true);
 export const REDIS_PORT = env.get('redis_port', true);
-export const INFLUX_ENABLE = env.get('influx_enable', true);
+export const INFLUX_ENABLE = env.get('influx_enable', true).toLowerCase() === 'true';
 export const INFLUX_URL = env.get('influx_url');
 export const INFLUX_TOKEN = env.get('influx_token');
 export const INFLUX_ORG = env.get('influx_org');

@@ -118,7 +118,17 @@ export async function readDirectory(folder: string): Promise<void> {
   const files = await readdir(folder, { recursive: true });
 
   for (const filename of files) {
-    if (!filename.endsWith('.ts')) continue;
+    const normalizedFilename = filename.replaceAll('\\', '/').toLowerCase();
+
+    if (!normalizedFilename.endsWith('.ts')) continue;
+    if (
+      normalizedFilename.endsWith('.test.ts') ||
+      normalizedFilename.endsWith('.spec.ts') ||
+      normalizedFilename.endsWith('.d.ts') ||
+      normalizedFilename.split('/').includes('__tests__')
+    ) {
+      continue;
+    }
 
     const fullPath = join(folder, filename);
 

@@ -5,11 +5,13 @@ import {
   DiscordInteractionContextType,
   MessageComponentTypes,
   MessageFlags,
+  type MessageComponents,
 } from 'discordeno';
 import createApplicationCommand from 'helpers/command';
 import { ApplicationCommandCategory, RequestMethod, ResponseType } from 'types/types';
 import { truncate } from 'utils/markdown';
 import { makeRequest } from 'utils/request';
+import { normalizeUiText } from './forgeFormatting';
 
 createApplicationCommand({
   name: 'ore',
@@ -81,7 +83,7 @@ createApplicationCommand({
               components: [
                 {
                   type: MessageComponentTypes.TextDisplay,
-                  content: `# ${res.name}\n-# ${res.rarity}\n*${res.description}*${res.trait ? `\n> ${res.trait.description} (${res.trait.type})` : '\n> None'}`,
+                  content: `# ${res.name}\n-# ${res.rarity}\n*${normalizeUiText(res.description)}*${res.trait ? `\n> ${normalizeUiText(res.trait.description)} (${normalizeUiText(res.trait.type)})` : '\n> None'}`,
                 },
               ],
               accessory: {
@@ -91,8 +93,8 @@ createApplicationCommand({
                 },
               },
             },
-            ...(res.from.some((s) => s.source === 'Rock')
-              ? [
+            ...(res.from.some((s: any) => s.source === 'Rock')
+              ? ([
                   {
                     type: MessageComponentTypes.TextDisplay,
                     content: '**Rock:**',
@@ -105,9 +107,9 @@ createApplicationCommand({
                         customId: 'ore-rock',
                         placeholder: 'Mineable From:',
                         options: res.from
-                          .filter((s) => s.source === 'Rock')
-                          .flatMap((item) =>
-                            (item.world ?? []).map((world) => ({
+                          .filter((s: any) => s.source === 'Rock')
+                          .flatMap((item: any) =>
+                            (item.world ?? []).map((world: string) => ({
                               label: world,
                               value: world,
                               description: truncate(item.rock?.join(', ') ?? '', 100),
@@ -116,10 +118,10 @@ createApplicationCommand({
                       },
                     ],
                   },
-                ]
+                ] satisfies MessageComponents)
               : []),
-            ...(res.from.some((s) => s.source === 'Enemy')
-              ? [
+            ...(res.from.some((s: any) => s.source === 'Enemy')
+              ? ([
                   {
                     type: MessageComponentTypes.TextDisplay,
                     content: '**Enemy:**',
@@ -132,15 +134,20 @@ createApplicationCommand({
                         customId: 'ore-enemy',
                         placeholder: 'Obtainable From:',
                         options: res.from
-                          .filter((s) => s.source === 'Enemy')
-                          .flatMap((item) =>
-                            (item.world ?? []).map((world) => ({
+                          .filter((s: any) => s.source === 'Enemy')
+                          .flatMap((item: any) =>
+                            (item.world ?? []).map((world: string) => ({
                               label: world,
                               value: world,
                               description: truncate(
-                                [item.enemy?.join(', '), item.drop_chance != null ? `${item.drop_chance}% drop` : null]
+                                [
+                                  item.enemy?.join(', '),
+                                  item.drop_chance != null
+                                    ? `${Number((item.drop_chance * 100).toFixed(4))}% drop`
+                                    : null,
+                                ]
                                   .filter(Boolean)
-                                  .join(' — '),
+                                  .join(' - '),
                                 100,
                               ),
                             })),
@@ -148,20 +155,36 @@ createApplicationCommand({
                       },
                     ],
                   },
-                ]
+                ] satisfies MessageComponents)
               : []),
-            ...(res.from.some((s) => s.source === 'Crafting')
-              ? [
+            ...(res.from.some((s: any) => s.source === 'Crafting')
+              ? ([
                   {
                     type: MessageComponentTypes.TextDisplay,
                     content: `**Craft:**\n${res.from
-                      .filter((s) => s.source === 'Crafting')
-                      .flatMap((item) =>
-                        Object.entries(item.recipe ?? {}).map(([name, qty]) => `- ${qty}x **${name}**`),
-                      )
+                      .filter((s: any) => s.source === 'Crafting')
+                      .map((item: any) => {
+                        const location = [item.station, ...(item.region ?? [])].filter(Boolean).join(' — ');
+                        const recipe = Object.entries(item.recipe ?? {})
+                          .map(([name, qty]) => `- ${qty}x **${name}**`)
+                          .join('\n');
+                        return `${location ? `-# ${location}\n` : ''}${recipe}`;
+                      })
                       .join('\n')}`,
                   },
-                ]
+                ] satisfies MessageComponents)
+              : []),
+            ...(res.from.some((s: any) => s.source === 'Raid')
+              ? ([
+                  {
+                    type: MessageComponentTypes.TextDisplay,
+                    content: `**Raid:**\n${res.from
+                      .filter((s: any) => s.source === 'Raid')
+                      .flatMap((item: any) => item.raid ?? item.region ?? [])
+                      .map((raid: string) => `- **${raid}**`)
+                      .join('\n')}`,
+                  },
+                ] satisfies MessageComponents)
               : []),
             {
               type: MessageComponentTypes.Separator,

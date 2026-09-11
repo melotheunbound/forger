@@ -89,7 +89,6 @@ const rawBot = createBot({
   },
 });
 
-// If you want to add custom properties to the bot, you can extend the CustomBot type by adding your own
 export type CustomBot = typeof rawBot & {
   commands: Collection<string, ApplicationCommand>;
 };
@@ -100,7 +99,6 @@ bot.commands = new Collection<string, ApplicationCommand>();
 
 overrideGatewayImplementations(bot);
 
-// Override the default gateway functions to allow the methods on the gateway object to proxy the requests to the gateway proxy
 function overrideGatewayImplementations(bot: CustomBot): void {
   bot.gateway.sendPayload = async (shardId, payload) => {
     await makeRequest(GATEWAY_URL, {
@@ -146,11 +144,104 @@ export async function getShardInfoFromGuild(guildId?: bigint): Promise<Omit<Shar
   return res;
 }
 
+const normalizeDescription = (value: unknown) => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, 100) : undefined;
+};
+
+const normalizeDisplayText = (value: string) =>
+  value.replace(/\bundefined\b/gi, 'Not available').replace(/\bnull\b/gi, 'Not available');
+
+/**
+ * Keep Discord component payloads inside API limits, avoid literal missing-value
+ * strings in user-facing text, and render passive page indicators as small text.
+ */
+function normalizeComponents(components: any[]): any[] {
+  const output: any[] = [];
+
+  for (const original of components ?? []) {
+    if (!original || typeof original !== 'object') {
+      output.push(original);
+      continue;
+    }
+
+    const component: any = { ...original };
+
+    if (component.type === MessageComponentTypes.TextDisplay && typeof component.content === 'string') {
+      component.content = normalizeDisplayText(component.content);
+    }
+
+    if ('description' in component) {
+      const description = normalizeDescription(component.description);
+      if (description === undefined) delete component.description;
+      else component.description = description;
+    }
+
+    if (Array.isArray(component.options)) {
+      component.options = component.options.map((option: any) => {
+        if (!option || typeof option !== 'object') return option;
+        const next = { ...option };
+        if ('description' in next) {
+          const description = normalizeDescription(next.description);
+          if (description === undefined) delete next.description;
+          else next.description = description;
+        }
+        return next;
+      });
+    }
+
+    if (component.component && typeof component.component === 'object') {
+      component.component = normalizeComponents([component.component])[0] ?? component.component;
+    }
+
+    if (Array.isArray(component.components)) {
+      if (component.type === MessageComponentTypes.ActionRow) {
+        const pageLabel = component.components.find(
+          (child: any) =>
+            child?.type === MessageComponentTypes.Button &&
+            typeof child?.customId === 'string' &&
+            child.customId.includes('page-label'),
+        );
+
+        if (pageLabel) {
+          const remaining = component.components.filter((child: any) => child !== pageLabel);
+          if (remaining.length) {
+            output.push({ ...component, components: normalizeComponents(remaining) });
+          }
+          output.push({
+            type: MessageComponentTypes.TextDisplay,
+            content: `-# ${String(pageLabel.label ?? 'Page')}`,
+          });
+          continue;
+        }
+      }
+
+      component.components = normalizeComponents(component.components);
+    }
+
+    if (component.accessory && typeof component.accessory === 'object') {
+      component.accessory = { ...component.accessory };
+      if (Array.isArray(component.accessory.components)) {
+        component.accessory.components = normalizeComponents(component.accessory.components);
+      }
+    }
+
+    output.push(component);
+  }
+
+  return output;
+}
+
 // Override interaction methods to add top.gg link
 const sendInteractionResponse = bot.helpers.sendInteractionResponse;
 
 bot.helpers.sendInteractionResponse = async (interactionId, token, options) => {
   if (options.data) {
+    if (Array.isArray(options.data.components)) {
+      options.data.components = normalizeComponents(options.data.components);
+    }
+
     const isComponentsV2 = Boolean((options.data.flags ?? 0) & MessageFlags.IsComponentsV2);
 
     if (isComponentsV2) {
@@ -204,6 +295,10 @@ const editOriginalInteractionResponse = bot.helpers.editOriginalInteractionRespo
 
 bot.helpers.editOriginalInteractionResponse = async (token, options) => {
   if (options) {
+    if (Array.isArray(options.components)) {
+      options.components = normalizeComponents(options.components);
+    }
+
     const isComponentsV2 = Boolean((options.flags ?? 0) & MessageFlags.IsComponentsV2);
 
     if (isComponentsV2) {

@@ -110,7 +110,8 @@ createApplicationCommand({
             },
             {
               type: MessageComponentTypes.TextDisplay,
-              content: `## Information:\n- Damage: **${res.damage}**\n- Attack Speed: **${res.attack_speed}s**\n- Damage Per Second: **${res.damage_per_second}**\n- Range: **${res.attack_range} studs**\n- Chance: **${res.chance}**\n- Minimum Ore Requirement: **${res.min_ores}**\n- Base Price: **${res.base_price}**`,
+              content: `## Information:\n- Damage: **${res.damage}**\n- Index Speed: **${res.index_speed ?? res.attack_speed}s**
+- Real Speed: **${res.real_speed ?? res.attack_speed}s**\n- Damage Per Second: **${res.damage_per_second}**\n- Range: **${res.attack_range} studs**\n- Chance: **${res.chance}**\n- Minimum Ore Requirement: **${res.min_ores}**\n- Base Price: **${res.base_price}**`,
             },
           ],
         },

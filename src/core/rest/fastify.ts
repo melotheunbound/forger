@@ -47,7 +47,10 @@ export async function parseMultiformBody(body: unknown): Promise<FormData> {
     const value = objectValue as MultipartFile | MultipartValue;
 
     if (value.type === 'file') {
-      form.append(value.fieldname, new Blob([await value.toBuffer()]), value.filename);
+      const buffer = await value.toBuffer();
+      const bytes = new Uint8Array(buffer.byteLength);
+      bytes.set(buffer);
+      form.append(value.fieldname, new Blob([bytes]), value.filename);
     }
     if (value.type === 'field' && typeof value.value === 'string') {
       form.append(value.fieldname, value.value);

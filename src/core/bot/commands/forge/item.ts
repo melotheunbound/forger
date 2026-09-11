@@ -9,7 +9,23 @@ import {
 import createApplicationCommand from 'helpers/command';
 import { ApplicationCommandCategory, RequestMethod, ResponseType } from 'types/types';
 import { makeRequest } from 'utils/request';
-import { Emoji } from 'core/emojis';
+
+const EFFECT_LABELS: Record<string, string> = {
+  duration_seconds: 'Duration',
+  health_restore_total: 'Health Restored',
+};
+
+const formatEffectLabel = (key: string) =>
+  EFFECT_LABELS[key] ??
+  key
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const formatEffectValue = (key: string, value: unknown) => {
+  if (value == null) return 'Not available';
+  if (key === 'duration_seconds' && typeof value === 'number') return `${value}s`;
+  return String(value);
+};
 
 createApplicationCommand({
   name: 'item',
@@ -75,25 +91,40 @@ createApplicationCommand({
       },
     });
 
+    const effects =
+      res.effects && typeof res.effects === 'object'
+        ? Object.entries(res.effects).filter(([, value]) => value != null)
+        : [];
+
+    const components: any[] = [
+      {
+        type: MessageComponentTypes.TextDisplay,
+        content: `# ${res.name ?? 'Unknown Item'}\n-# ${res.category ?? 'Unknown category'}${res.price?.formatted ? ` · ${res.price.formatted}` : ''}`,
+      },
+    ];
+
+    if (res.description) {
+      components.push({
+        type: MessageComponentTypes.TextDisplay,
+        content: `### Description\n> ${String(res.description).replace(/\n/g, '\n> ')}`,
+      });
+    }
+
+    if (effects.length) {
+      components.push({ type: MessageComponentTypes.Separator });
+      components.push({
+        type: MessageComponentTypes.TextDisplay,
+        content: `### Effects\n${effects
+          .map(([key, value]) => `- **${formatEffectLabel(key)}:** ${formatEffectValue(key, value)}`)
+          .join('\n')}`,
+      });
+    }
+
     await interaction.edit({
       components: [
         {
           type: MessageComponentTypes.Container,
-          components: [
-            {
-              type: MessageComponentTypes.TextDisplay,
-              content:
-                `# ${res.name}\n` +
-                `- Category: **${res.category ?? 'Unknown'}**\n` +
-                (res.price?.formatted ? `- Price: **${res.price.formatted}**\n` : '') +
-                (res.description ? `\n*${res.description}*` : '') +
-                (res.effects && typeof res.effects === 'object' && Object.keys(res.effects).length
-                  ? `\n\n## Effects\n${Object.entries(res.effects)
-                      .map(([key, value]) => `- ${String(key)}: **${String(value)}**`)
-                      .join('\n')}`
-                  : ''),
-            },
-          ],
+          components,
         },
       ],
       flags: MessageFlags.IsComponentsV2,
