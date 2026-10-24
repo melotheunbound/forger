@@ -1,3 +1,4 @@
+import { oreTraitText, oreInformationText } from './orePresentation';
 import { FORGER_API_KEY } from 'core/variables';
 import {
   ApplicationCommandOptionTypes,
@@ -83,7 +84,7 @@ createApplicationCommand({
               components: [
                 {
                   type: MessageComponentTypes.TextDisplay,
-                  content: `# ${res.name}\n-# ${res.rarity}\n*${normalizeUiText(res.description)}*${res.trait ? `\n> ${normalizeUiText(res.trait.description)} (${normalizeUiText(res.trait.type)})` : '\n> None'}`,
+                  content: `# ${res.name}\n-# ${res.rarity}\n*${normalizeUiText(res.description)}*\n${oreTraitText(res)}`,
                 },
               ],
               accessory: {
@@ -120,7 +121,15 @@ createApplicationCommand({
                   },
                 ] satisfies MessageComponents)
               : []),
-            ...(res.from.some((s: any) => s.source === 'Enemy')
+            ...(res.display?.obtainment
+              ? [
+                  {
+                    type: MessageComponentTypes.TextDisplay as const,
+                    content: '**Obtainable From:**\n' + res.display.obtainment,
+                  },
+                ]
+              : []),
+            ...(!res.display?.obtainment && res.from.some((s: any) => s.source === 'Enemy')
               ? ([
                   {
                     type: MessageComponentTypes.TextDisplay,
@@ -191,7 +200,7 @@ createApplicationCommand({
             },
             {
               type: MessageComponentTypes.TextDisplay,
-              content: `- Chance: **${res.chance}**\n- Multiplier: **${res.multiplier}x**\n- Price: **${res.price}**${res.unique_price_multiplier != null ? `\n- Unique Price Multiplier: **${res.unique_price_multiplier}x**` : ''}`,
+              content: oreInformationText(res),
             },
           ],
         },
