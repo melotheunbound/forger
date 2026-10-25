@@ -1,51 +1,228 @@
 import type {
-  ApplicationCommandOptionTypes,
-  Camelize,
-  CreateApplicationCommand,
-  DiscordApplicationCommandOption,
-  Bot as DiscordenoBot,
-  ParsedInteractionOption,
-  PermissionStrings,
-} from 'discordeno';
-import type { bot, CustomBot } from 'bot/bot';
-import EventListener from 'libs/listener';
-import type createCollector from 'helpers/collector';
+  APIApplicationCommandAutocompleteInteraction,
+  APIAttachment,
+  APIChannel,
+  APIChatInputApplicationCommandInteraction,
+  APIInteractionDataResolvedGuildMember,
+  APIMessageApplicationCommandInteraction,
+  APIPrimaryEntryPointCommandInteraction,
+  APIRole,
+  APIUser,
+  APIUserApplicationCommandInteraction,
+  ApplicationCommandOptionAllowedChannelType,
+  ApplicationCommandOptionType,
+  ApplicationCommandType,
+  ApplicationIntegrationType,
+  EntryPointCommandHandlerType,
+  InteractionContextType,
+  LocalizationMap,
+  Snowflake,
+  PermissionFlagsBits,
+  GatewayDispatchEvents,
+  GatewayDispatchPayload,
+  Client,
+} from '@discordjs/core'
+import { EventEmitter } from 'events'
 
-// ========== ENUMS ==========
+export type Localization = (Partial<Record<keyof LocalizationMap, string>> & { global: string }) | string
 
-export enum ApplicationCommandCategory {
-  Core = 'Core',
-  Forge = 'Forge',
-  Dev = 'Dev',
+export interface BaseNonPrimaryEntryPointCommand<Type extends ApplicationCommandType> {
+  type: Type
+  name: Localization
+  integrationTypes?: ApplicationIntegrationType[]
+  contexts?: InteractionContextType[]
+  defaultMemberPermissions?: (typeof PermissionFlagsBits)[keyof typeof PermissionFlagsBits]
+  cooldown?: number
+  guilds?: Snowflake[]
+  dev?: boolean
+  acknowledge?: boolean
+  ephemeral?: boolean
+  nsfw?: boolean
 }
 
-export enum SchemaType {
-  String = 'string',
-  Number = 'number',
-  Boolean = 'boolean',
-  Array = 'array',
-  Object = 'object',
+export interface ChatInputCommand<
+  Options extends ChatInputOptions = ChatInputOptions,
+> extends BaseNonPrimaryEntryPointCommand<ApplicationCommandType.ChatInput> {
+  description: Localization
+  options?: Options
+  run: (
+    interaction: APIChatInputApplicationCommandInteraction,
+    options: GetChatInputCommandOptions<Options>,
+    client: Client,
+  ) => Promise<void>
+  autocomplete?: (interaction: APIApplicationCommandAutocompleteInteraction, client: Client) => Promise<void>
 }
 
-export enum ItemType {
-  FILE = 0,
-  DIRECTORY = 1,
-  SYMLINK = 2,
-  UNKNOWN = 3,
+export type ChatInputOptions = ChatInputOption[]
+
+export type ChatInputOption =
+  | AttachmentChatInputOption
+  | BooleanChatInputOption
+  | ChannelChatInputOption
+  | IntegerChatInputOption
+  | MentionableChatInputOption
+  | NumberChatInputOption
+  | RoleChatInputOption
+  | StringChatInputOption
+  | UserChatInputOption
+  | SubcommandChatInputOption
+  | SubcommandGroupChatInputOption
+
+export type BaseChatInputOption<Type extends ApplicationCommandOptionType = ApplicationCommandOptionType> = {
+  type: Type
+  name: Localization
+  description: Localization
+  required?: boolean
 }
 
-export enum RequestMethod {
-  GET = 'GET',
-  POST = 'POST',
-  PUT = 'PUT',
-  DELETE = 'DELETE',
-  PATCH = 'PATCH',
+export type AttachmentChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.Attachment>
+
+export type BooleanChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.Boolean>
+
+export type ChannelChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.Channel> & {
+  channel_types?: ApplicationCommandOptionAllowedChannelType[]
 }
 
-export enum ResponseType {
-  TEXT = 'TEXT',
-  JSON = 'JSON',
-  BUFFER = 'BUFFER',
+export type IntegerChatInputOption =
+  | (BaseChatInputOption<ApplicationCommandOptionType.Integer> & {
+      maxValue?: number
+      minValue?: number
+      choices?: ChatInputOptionChoice<ApplicationCommandOptionType.Integer>[]
+      autocomplete?: false
+    })
+  | (BaseChatInputOption<ApplicationCommandOptionType.Integer> & {
+      maxValue?: number
+      minValue?: number
+      choices?: never
+      autocomplete: true
+    })
+
+export type MentionableChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.Mentionable>
+
+export type NumberChatInputOption =
+  | (BaseChatInputOption<ApplicationCommandOptionType.Number> & {
+      maxValue?: number
+      minValue?: number
+      choices?: ChatInputOptionChoice<ApplicationCommandOptionType.Number>[]
+      autocomplete?: false
+    })
+  | (BaseChatInputOption<ApplicationCommandOptionType.Number> & {
+      maxValue?: number
+      minValue?: number
+      choices?: never
+      autocomplete: true
+    })
+
+export type RoleChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.Role>
+
+export type StringChatInputOption =
+  | (BaseChatInputOption<ApplicationCommandOptionType.String> & {
+      maxLength?: number
+      minLength?: number
+      choices?: ChatInputOptionChoice<ApplicationCommandOptionType.String>[]
+      autocomplete?: false
+    })
+  | (BaseChatInputOption<ApplicationCommandOptionType.String> & {
+      maxLength?: number
+      minLength?: number
+      choices?: never
+      autocomplete: true
+    })
+
+export type UserChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.User>
+
+export type SubcommandChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.Subcommand> & {
+  options?: Exclude<ChatInputOption, SubcommandChatInputOption | SubcommandGroupChatInputOption>[]
+}
+
+export type SubcommandChatInputOptions = SubcommandChatInputOption[]
+
+export type SubcommandGroupChatInputOption = BaseChatInputOption<ApplicationCommandOptionType.SubcommandGroup> & {
+  options?: SubcommandChatInputOptions
+}
+
+export type ChatInputOptionChoice<Type extends ApplicationCommandOptionType> = {
+  name: Localization
+  value: Type extends ApplicationCommandOptionType.String
+    ? string
+    : Type extends ApplicationCommandOptionType.Number
+      ? number
+      : never
+}
+
+export interface InteractionResolvedUser {
+  user: APIUser
+  member?: APIInteractionDataResolvedGuildMember
+}
+
+export interface TypeToResolvedMap {
+  [ApplicationCommandOptionType.String]: string
+  [ApplicationCommandOptionType.Integer]: number
+  [ApplicationCommandOptionType.Boolean]: boolean
+  [ApplicationCommandOptionType.User]: InteractionResolvedUser
+  [ApplicationCommandOptionType.Channel]: APIChannel
+  [ApplicationCommandOptionType.Role]: APIRole
+  [ApplicationCommandOptionType.Mentionable]: APIRole | InteractionResolvedUser
+  [ApplicationCommandOptionType.Number]: number
+  [ApplicationCommandOptionType.Attachment]: APIAttachment
+}
+
+export type SubCommandApplicationCommand =
+  ApplicationCommandOptionType.Subcommand | ApplicationCommandOptionType.SubcommandGroup
+
+export type ConvertTypeToResolved<Type extends keyof TypeToResolvedMap> = TypeToResolvedMap[Type]
+
+export type GetOptionName<Option> = Option extends { name: string }
+  ? Option['name']
+  : Option extends { name: { global: string } }
+    ? Option['name']['global']
+    : never
+
+export type BuildOptions<Options extends ChatInputOption[] | undefined> = {
+  [Index in keyof Omit<Options, keyof unknown[]> as GetOptionName<Options[Index]>]: GetOptionValue<Options[Index]>
+}
+
+export type GetOptionValue<Option> = Option extends {
+  type: ApplicationCommandOptionType
+  required?: boolean
+}
+  ? Option extends {
+      type: SubCommandApplicationCommand
+      options?: ChatInputOptions
+    }
+    ? BuildOptions<Option['options']>
+    : Option['type'] extends keyof TypeToResolvedMap
+      ? ConvertTypeToResolved<Option['type']> | (Option['required'] extends true ? never : undefined)
+      : never
+  : never
+
+export type GetChatInputCommandOptions<Options extends ChatInputOptions = ChatInputOptions> = BuildOptions<Options>
+
+export interface UserContextMenuCommand extends BaseNonPrimaryEntryPointCommand<ApplicationCommandType.User> {
+  run: (interaction: APIUserApplicationCommandInteraction, client: Client) => Promise<void>
+}
+
+export interface MessageContextMenuCommand extends BaseNonPrimaryEntryPointCommand<ApplicationCommandType.Message> {
+  run: (interaction: APIMessageApplicationCommandInteraction, client: Client) => Promise<void>
+}
+
+export interface PrimaryEntryPointCommand {
+  type: ApplicationCommandType.PrimaryEntryPoint
+  name: string
+  nameLocalizations?: LocalizationMap
+  handler: EntryPointCommandHandlerType
+  run?: (interaction: APIPrimaryEntryPointCommandInteraction, client: Client) => Promise<void>
+}
+
+export type NonPrimaryEntryPointCommand<Options extends ChatInputOptions = ChatInputOptions> =
+  ChatInputCommand<Options> | UserContextMenuCommand | MessageContextMenuCommand
+
+export type ApplicationCommand<Options extends ChatInputOptions = ChatInputOptions> =
+  NonPrimaryEntryPointCommand<Options> | PrimaryEntryPointCommand
+
+export interface GatewayEvent<Event extends GatewayDispatchEvents = GatewayDispatchEvents> {
+  event: Event
+  run: (args: Extract<GatewayDispatchPayload, { t: Event }>['d'], client: Client) => Promise<void>
 }
 
 export enum TimestampStyle {
@@ -75,164 +252,55 @@ export enum HighlightStyle {
   Default = 'default',
 }
 
-// ========== INTERFACES ==========
-
-export interface Stack {
-  reject(res?: unknown): any;
-  resolve(val: unknown): any;
-  callback: () => any;
+export enum RequestMethod {
+  GET = 'get',
+  POST = 'post',
+  PUT = 'put',
+  DELETE = 'delete',
+  PATCH = 'patch',
 }
 
-export interface Details {
-  category: ApplicationCommandCategory;
-  summary?: string;
-  usage?: string;
-  examples?: string[];
-  cooldown?: number;
+export enum ResponseType {
+  TEXT = 'text',
+  JSON = 'json',
+  BUFFER = 'buffer',
 }
 
-export interface CommandPermission {
-  author: PermissionStrings[];
-  client: PermissionStrings[];
+export type RequestOptions<Type extends ResponseType> = {
+  method: RequestMethod
+  response: Type
+  headers?: Record<string, string>
+  params?: Record<string, string | number | boolean>
+  body?: unknown
+  timeout?: number
 }
-
-export interface Precondition {
-  run(context: any): boolean | Promise<boolean>;
-  fail(context: any): void;
-}
-
-export interface CollectorOptions<T> {
-  key: string;
-  filter?: (item: T) => boolean | Promise<boolean>;
-  duration?: number;
-  max?: number;
-}
-
-export interface CollectorEvents<T> {
-  collect: [T];
-  dispose: [string];
-}
-
-export interface CollectorData<T> {
-  id: string;
-  key: string;
-  max?: number;
-  filter?: (item: T) => boolean | Promise<boolean>;
-  listener: EventListener<CollectorEvents<T>>;
-}
-
-export interface ApplicationCommand<
-  T extends ApplicationCommandOptions = ApplicationCommandOptions,
-> extends CreateApplicationCommand {
-  details: Details;
-  preconditions?: Precondition;
-  permissions?: CommandPermission;
-  options?: T;
-  acknowledge?: boolean;
-  ephemeral?: boolean;
-  dev?: boolean;
-  run: (bot: CustomBot, interaction: Interaction, options: GetApplicationCommandOptions<T>) => any;
-  autocomplete?: (bot: CustomBot, interaction: Interaction, options: GetApplicationCommandOptions<T>) => any;
-}
-
-export interface InteractionResolvedUser {
-  user: User;
-  member: InteractionResolvedMember;
-}
-
-export interface TypeToResolvedMap {
-  [ApplicationCommandOptionTypes.String]: string;
-  [ApplicationCommandOptionTypes.Integer]: number;
-  [ApplicationCommandOptionTypes.Boolean]: boolean;
-  [ApplicationCommandOptionTypes.User]: InteractionResolvedUser;
-  [ApplicationCommandOptionTypes.Channel]: Channel;
-  [ApplicationCommandOptionTypes.Role]: Role;
-  [ApplicationCommandOptionTypes.Mentionable]: Role | InteractionResolvedUser;
-  [ApplicationCommandOptionTypes.Number]: number;
-  [ApplicationCommandOptionTypes.Attachment]: Attachment;
-}
-
-export interface Event<T extends keyof Events> {
-  name: T;
-  run: (...args: Parameters<Events[T]>) => any;
-}
-
-// ========== TYPES ==========
 
 export type RequestResponse = {
-  [ResponseType.TEXT]: string;
-  [ResponseType.JSON]: { [key: string]: any };
-  [ResponseType.BUFFER]: Buffer;
-};
-
-export type RequestOptions<T extends ResponseType> = {
-  body?: any;
-  method?: RequestMethod;
-  response?: T;
-  params?: { [key: string]: any };
-  headers?: { [key: string]: any };
-  timeout?: number;
-};
-
-export type ApplicationCommandOption = Camelize<DiscordApplicationCommandOption>;
-export type ApplicationCommandOptions = ApplicationCommandOption[];
-
-export type InteractionResolvedMember = Omit<Member, 'user' | 'deaf' | 'mute'>;
-
-export type Optional<T extends Record<any, any>, K extends keyof T> = Omit<T, K> & DeepPartial<Pick<T, K>>;
-
-export type NotOptional<T extends Record<any, any>, K extends keyof T> = Omit<DeepPartial<T>, K> & Pick<T, K>;
-
-export type DeepPartial<T extends Record<any, any>> = {
-  [K in keyof T]?: T[K] extends Object ? DeepPartial<T[K]> : T[K];
-};
-
-export type ExtractDesiredProps<T> = T extends DiscordenoBot<infer Props, infer _Behavior> ? Props : never;
-export type ExtractDesiredBehavior<T> = T extends DiscordenoBot<infer _Props, infer Behavior> ? Behavior : never;
-
-export type Events = Required<typeof bot.events>;
-export type User = typeof bot.transformers.$inferredTypes.user;
-export type Member = typeof bot.transformers.$inferredTypes.member;
-export type Channel = typeof bot.transformers.$inferredTypes.channel;
-export type Role = typeof bot.transformers.$inferredTypes.role;
-export type Attachment = typeof bot.transformers.$inferredTypes.attachment;
-export type Interaction = typeof bot.transformers.$inferredTypes.interaction;
-export type Message = typeof bot.transformers.$inferredTypes.message;
-export type Guild = typeof bot.transformers.$inferredTypes.guild;
-
-export type CollectorType<T> = ReturnType<typeof createCollector<T>>;
-
-export type ResolvedValues = ParsedInteractionOption<
-  ExtractDesiredProps<CustomBot>,
-  ExtractDesiredBehavior<CustomBot>
->[string];
-
-export type ConvertTypeToResolved<T extends ApplicationCommandOptionTypes> = T extends keyof TypeToResolvedMap
-  ? TypeToResolvedMap[T]
-  : ResolvedValues;
-
-export type SubCommandApplicationCommand =
-  | ApplicationCommandOptionTypes.SubCommand
-  | ApplicationCommandOptionTypes.SubCommandGroup;
-
-export type GetOptionName<T> = T extends { name: string } ? T['name'] : never;
-
-export type GetOptionValue<T> = T extends {
-  type: ApplicationCommandOptionTypes;
-  required?: boolean;
+  [ResponseType.TEXT]: string
+  [ResponseType.JSON]: any
+  [ResponseType.BUFFER]: Buffer
 }
-  ? T extends {
-      type: SubCommandApplicationCommand;
-      options?: ApplicationCommandOptions;
-    }
-    ? BuildOptions<T['options']>
-    : ConvertTypeToResolved<T['type']> | (T['required'] extends true ? never : undefined)
-  : never;
 
-export type BuildOptions<T extends ApplicationCommandOptions | undefined> = {
-  [Prop in keyof Omit<T, keyof unknown[]> as GetOptionName<T[Prop]>]: GetOptionValue<T[Prop]>;
-};
+export interface CollectorOptions<Type> {
+  key: string
+  filter?: (item: Type) => boolean | Promise<boolean>
+  duration?: number
+  hardDeadline?: number
+  max?: number
+}
 
-export type GetApplicationCommandOptions<T extends ApplicationCommandOptions> = T extends ApplicationCommandOptions
-  ? { [Prop in keyof BuildOptions<T> as Prop]: BuildOptions<T>[Prop] }
-  : never;
+export interface CollectorEvents<Type> {
+  collect: [Type]
+  end: [string]
+}
+
+export interface Collector<Type> extends EventEmitter<CollectorEvents<Type>> {
+  collect(item: Type): Promise<void>
+  end(reason?: string): void
+}
+
+export interface GatewayShard {
+  ping: number
+  uptime: number
+  memory: () => Promise<NodeJS.MemoryUsage>
+}

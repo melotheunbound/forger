@@ -1,0 +1,235 @@
+import { Collection } from '@discordjs/collection'
+import type { BooleanChatInputOption, GatewayShard } from '../types/types'
+import {
+  ActivityType,
+  ApplicationCommandOptionType,
+  ApplicationCommandType,
+  Client,
+  ComponentType,
+  GatewayDispatchEvents,
+  GatewayIntentBits,
+  MessageFlags,
+  PresenceUpdateStatus,
+  Routes,
+  type GatewayDispatchPayload,
+  type RESTPutAPIApplicationCommandsJSONBody,
+  type RESTPutAPIApplicationGuildCommandsJSONBody,
+  type ToEventProps,
+} from '@discordjs/core'
+import { readDirectory, transformCommand } from '../utils/utils'
+import { REST } from '@discordjs/rest'
+import env from '../utils/env'
+import { CompressionMethod, WebSocketManager, WebSocketShardEvents, WorkerShardingStrategy } from '@discordjs/ws'
+import { scheduleReshardCheck } from '../crons/reshard'
+import { events } from '../builders/event'
+import { commands } from '../builders/command'
+import createCollector from '../builders/collector'
+import { getShardMemory, handleShardMemoryResponse } from '../utils/shard'
+import { join } from 'path'
+import { emoji } from '../utils/markdown'
+import { MESSAGE_BLOCK_REASONS } from './constants'
+
+process.on('uncaughtException', console.error)
+process.on('unhandledRejection', console.error)
+
+await readDirectory(join(process.cwd(), 'src', 'bot', 'commands'))
+await readDirectory(join(process.cwd(), 'src', 'bot', 'events'))
+
+const rest = new REST().setToken(env.get('token', true)!.toString())
+
+const gateway = new WebSocketManager({
+  token: env.get('token', true)!.toString(),
+  intents: GatewayIntentBits.Guilds,
+  shardCount: env.get('shard_count')?.toNumber() ?? null,
+  rest,
+  compression: CompressionMethod.ZlibNative,
+  buildStrategy: manager =>
+    new WorkerShardingStrategy(manager, {
+      shardsPerWorker: env.get('shards_per_worker')?.toNumber() ?? 4,
+      workerPath: join(process.cwd(), 'src', 'bot', 'worker.ts'),
+      unknownPayloadHandler: handleShardMemoryResponse,
+    }),
+})
+
+// @ts-expect-error
+const client = new Client({ rest, gateway })
+
+// some sort of workaround to have extra utilities
+client.gateway.shards = new Collection<number, GatewayShard>()
+client.rest.ping = async () => {
+  const start = performance.now()
+  await rest.get(Routes.gateway())
+  return Math.round(performance.now() - start)
+}
+client.api.interactions.createCollector = createCollector
+
+client.on(GatewayDispatchEvents.Ready, async payload => {
+  console.log(`Shard #${payload.shardId} is ready!`)
+
+  await client
+    .updatePresence(payload.shardId, {
+      since: null,
+      activities: [
+        {
+          type: ActivityType.Custom,
+          name: 'shardId',
+          state: `You're on shard #${payload.shardId}!`,
+        },
+      ],
+      status: PresenceUpdateStatus.Online,
+      afk: false,
+    })
+    .catch(error => {
+      console.error(`Failed to update presence for shard #${payload.shardId}:`, error)
+    })
+})
+
+// track uptime and latency
+gateway.on(WebSocketShardEvents.Ready, (_, shardId) => {
+  client.gateway.shards.set(shardId, {
+    ping: -1,
+    uptime: Temporal.Now.instant().epochMilliseconds,
+    memory: () => getShardMemory(shardId),
+  })
+})
+
+gateway.on(WebSocketShardEvents.HeartbeatComplete, (payload, shardId) => {
+  const shard = client.gateway.shards.get(shardId)
+
+  if (shard) shard.ping = payload.latency
+})
+
+events.forEach(event => {
+  client.on(
+    event.event,
+    async (payload: ToEventProps<Extract<GatewayDispatchPayload, { t: typeof event.event }>['d']>) => {
+      await event.run(payload.data, client).catch(error => {
+        console.error(`An error occurred while running event ${event.event}:`, error)
+      })
+    },
+  )
+})
+
+if (env.get('register_commands')!.toBoolean() === true) {
+  console.log('Refreshing application (/) commands')
+
+  commands.forEach(command => {
+    if (command.type !== ApplicationCommandType.ChatInput) return
+
+    command.options ??= []
+
+    const subcommands = command.options.flatMap(option =>
+      option.type === ApplicationCommandOptionType.Subcommand
+        ? [option]
+        : option.type === ApplicationCommandOptionType.SubcommandGroup
+          ? (option.options ?? [])
+          : [],
+    )
+
+    const options = subcommands.length ? subcommands.map(subcommand => (subcommand.options ??= [])) : [command.options]
+
+    options.forEach(options => {
+      if (!options.some(option => ((option.name as any).global || option.name) === 'ephemeral')) {
+        options.push({
+          type: ApplicationCommandOptionType.Boolean,
+          name: 'ephemeral',
+          description: 'Whether the response should only be visible to you',
+          required: false,
+        } satisfies BooleanChatInputOption)
+      }
+    })
+  })
+
+  const globalCommands: RESTPutAPIApplicationCommandsJSONBody = []
+  const commandsForGuilds = new Collection<string, RESTPutAPIApplicationGuildCommandsJSONBody>()
+
+  commands.forEach(command => {
+    const resolved = transformCommand(command)
+
+    if (!('guilds' in command)) {
+      globalCommands.push(resolved)
+
+      return
+    }
+
+    for (const guildId of command.guilds ?? []) {
+      if (resolved.type === ApplicationCommandType.PrimaryEntryPoint) return
+
+      const list = commandsForGuilds.get(guildId) ?? []
+      list.push(resolved)
+      commandsForGuilds.set(guildId, list)
+    }
+  })
+
+  if (globalCommands.length) {
+    await client.api.applicationCommands.bulkOverwriteGlobalCommands(
+      atob(env.get('token', true)!.toString().split('.')[0]!),
+      globalCommands,
+    )
+  }
+
+  for (const [guildId, commandsForGuild] of commandsForGuilds) {
+    if (commandsForGuild.length) {
+      await client.api.applicationCommands.bulkOverwriteGuildCommands(
+        atob(env.get('token', true)!.toString().split('.')[0]!),
+        guildId,
+        commandsForGuild,
+      )
+    }
+  }
+
+  console.log('Application (/) commands refreshed')
+}
+
+try {
+  await gateway.connect()
+
+  console.log('Gateway connected')
+  scheduleReshardCheck(gateway, client.api)
+} catch (error) {
+  console.error('An error occurred while connecting to the gateway:', error)
+}
+
+function votePrompt<T extends { content?: string; components?: any[]; flags?: number }>(body: T): T {
+  if (!(Math.random() < 0.33)) return body
+
+  const isComponentsV2 = !!((body.flags ?? 0) & MessageFlags.IsComponentsV2)
+
+  if (isComponentsV2) {
+    const textDisplay = {
+      type: ComponentType.TextDisplay,
+      content: `-# ${emoji('Topgg')} Consider voting for us on **[Top.gg!](<https://top.gg/bot/1461873695688491190>)**`,
+    }
+
+    body.components = [textDisplay, ...(body.components ?? [])]
+  } else if (body.content) {
+    body.content = `-# ${emoji('Topgg')} Consider voting for us on **[Top.gg!](<https://top.gg/bot/1461873695688491190>)**\n${body.content}`
+  }
+
+  return body
+}
+
+client.api.interactions.respond = (async (applicationId, interactionId, interactionToken, body, messageId, options) => {
+  body.allowed_mentions ??= { parse: [] }
+
+  votePrompt(body)
+
+  const original = await client.api.interactions.getOriginalReply(applicationId, interactionToken).catch(() => null)
+
+  try {
+    return original
+      ? await client.api.interactions.editReply(applicationId, interactionToken, body, messageId, options)
+      : (await client.api.interactions.reply(interactionId, interactionToken, body, options))!.resource!.message
+  } catch (error) {
+    const code = (error as any)?.code
+    const blocked = MESSAGE_BLOCK_REASONS[code as keyof typeof MESSAGE_BLOCK_REASONS]
+
+    if (!blocked) throw error
+
+    await client.api.interactions.deleteReply(applicationId, interactionToken).catch(() => null)
+
+    body.flags = (body.flags ?? 0) | MessageFlags.Ephemeral
+
+    return await client.api.interactions.followUp(applicationId, interactionToken, body, options)
+  }
+}) as typeof client.api.interactions.respond

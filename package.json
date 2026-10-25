@@ -1,38 +1,29 @@
 {
-  "name": "forger",
-  "module": "index.ts",
+  "name": "pocket-tool",
+  "module": "src/bot/index.ts",
   "type": "module",
   "private": true,
-  "packageManager": "bun@1.3.11",
   "scripts": {
-    "rest": "bun run src/core/rest/index.ts",
-    "bot": "bun run src/core/bot/index.ts",
-    "gateway": "bun run src/core/gateway/index.ts",
-    "register": "bun run src/core/scripts/register.ts",
-    "format": "bunx prettier --write .",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "verify": "bun run typecheck && bun test"
+    "start": "bun src/bot/index.ts",
+    "prettier": "prettier . --write"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.11",
-    "@types/express": "^5.0.6",
-    "prettier": "^3.8.1"
-  },
-  "peerDependencies": {
-    "typescript": "^6.0.2"
+    "@types/bun": "^1.4.1",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
-    "@fastify/env": "^5.0.3",
-    "@fastify/helmet": "^13.0.2",
-    "@fastify/multipart": "^9.4.0",
-    "@influxdata/influxdb-client": "^1.35.0",
+    "@discordjs/collection": "^2.1.1",
+    "@discordjs/core": "^2.6.0",
+    "@discordjs/rest": "^2.6.3",
+    "@discordjs/ws": "^2.0.4",
+    "@elevenlabs/elevenlabs-js": "^2.66.0",
+    "@napi-rs/canvas": "^1.0.8",
     "@tolga1452/toolbox.js": "^2.0.1",
-    "@top-gg/sdk": "^3.1.6",
-    "crypto": "^1.0.1",
-    "discordeno": "22.0.1-next.09f2dfd",
-    "express": "^5.2.1",
-    "fastify": "^5.8.4",
-    "redis": "^5.11.0"
+    "chrono-node": "^2.10.1",
+    "emoji-regex": "^10.6.0",
+    "ogg-opus-decoder": "^1.7.5",
+    "redis": "^6.2.1",
+    "sharp": "^0.35.4"
   }
 }

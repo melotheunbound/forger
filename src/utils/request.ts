@@ -1,76 +1,54 @@
-import http from 'http';
-import https from 'https';
-import { buildQueryString } from './utils';
-import { RequestMethod, ResponseType, type RequestOptions, type RequestResponse } from 'types/types';
+import { RequestMethod, ResponseType, type RequestOptions, type RequestResponse } from '../types/types'
 
-export function makeRequest<T extends ResponseType>(
+export async function makeRequest<Type extends ResponseType>(
   url: string,
-  options: RequestOptions<T>,
-): Promise<RequestResponse[T]> {
-  return new Promise((resolve, reject) => {
-    try {
-      const urlObj = new URL(url);
-      const protocol = urlObj.protocol === 'https:' ? https : http;
+  options: RequestOptions<Type>,
+): Promise<RequestResponse[Type]> {
+  const parsedUrl = new URL(url)
 
-      if (options.params) {
-        urlObj.search = buildQueryString(options.params);
-      }
+  if (options.params) {
+    const searchParams = new URLSearchParams()
 
-      const req = protocol.request(
-        {
-          hostname: urlObj.hostname,
-          port: urlObj.port || (protocol === https ? 443 : 80),
-          path: urlObj.pathname + urlObj.search,
-          method: options.method || RequestMethod.GET,
-          headers: { 'Content-Type': 'application/json', ...options.headers },
-          timeout: options.timeout || 10000,
-        },
-        (res) => {
-          let buffer = Buffer.alloc(0);
+    for (const [key, value] of Object.entries(options.params)) searchParams.append(key, String(value))
 
-          res.on('data', (chunk) => (buffer = Buffer.concat([buffer, chunk])));
+    parsedUrl.search = searchParams.toString()
+  }
 
-          res.on('end', () => {
-            const status = res.statusCode ?? 0;
-            if (status >= 200 && status < 300) {
-              try {
-                switch (options.response) {
-                  case ResponseType.JSON: {
-                    const text = buffer.toString('utf-8').trim();
-                    resolve(text ? (JSON.parse(text) as RequestResponse[T]) : ({} as RequestResponse[T]));
-                    break;
-                  }
-                  case ResponseType.BUFFER: {
-                    resolve(buffer as RequestResponse[T]);
-                    break;
-                  }
-                  default: {
-                    resolve(buffer.toString('utf-8') as RequestResponse[T]);
-                  }
-                }
-              } catch (e) {
-                reject(new Error(`Failed to parse response: ${(e as Error).message}`));
-              }
-            } else {
-              reject(new Error(`Request failed (${status}): ${buffer.toString('utf-8')}`));
-            }
-          });
-        },
-      );
+  const controller = new AbortController()
+  const timeout = options.timeout ?? 60 * 1000
 
-      req.on('error', (err) => reject(new Error(`Request error: ${err.message}`)));
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error('Request timed out'));
-      });
+  const timeoutId = setTimeout(() => controller.abort(), timeout)
 
-      if (options.body && options.method !== RequestMethod.GET) {
-        req.write(JSON.stringify(options.body));
-      }
+  try {
+    const res = await fetch(parsedUrl.toString(), {
+      method: options.method,
+      signal: controller.signal,
+      ...(options.headers ? { headers: options.headers } : {}),
+      ...(options.body && options.method !== RequestMethod.GET
+        ? {
+            body:
+              options.body instanceof FormData || typeof options.body === 'string'
+                ? options.body
+                : JSON.stringify(options.body),
+          }
+        : {}),
+    })
 
-      req.end();
-    } catch (e) {
-      reject(e);
+    if (!res.ok) throw new Error(`Request failed (${res.status}): ${await res.text()}`)
+
+    switch (options.response) {
+      case ResponseType.JSON:
+        return (await res.json()) as RequestResponse[Type]
+      case ResponseType.BUFFER:
+        return Buffer.from(await res.arrayBuffer()) as RequestResponse[Type]
+      case ResponseType.TEXT:
+        return (await res.text()) as RequestResponse[Type]
     }
-  });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('Request timed out')
+
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }

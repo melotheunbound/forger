@@ -7,6 +7,7 @@
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
+    "types": ["bun"],
 
     // Bundler mode
     "moduleResolution": "bundler",
@@ -24,20 +25,6 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false,
-
-    // Absolute paths
-    "paths": {
-      "core/*": ["./src/core/*"],
-      "bot/*": ["./src/core/bot/*"],
-      "gateway/*": ["./src/core/gateway/*"],
-      "rest/*": ["./src/core/rest/*"],
-      "helpers/*": ["./src/helpers/*"],
-      "middlewares/*": ["./src/middlewares/*"],
-      "types/*": ["./src/types/*"],
-      "utils/*": ["./src/utils/*"],
-      "libs/*": ["./src/libs/*"]
-    }
-  },
-  "exclude": ["src/**/*.test.ts"]
+    "noPropertyAccessFromIndexSignature": false
+  }
 }
