@@ -23,6 +23,7 @@ import {
   type LocalizationMap,
   type RESTPostAPIApplicationCommandsJSONBody,
   type RESTPostAPIApplicationGuildCommandsJSONBody,
+  type RESTPostAPIChatInputApplicationCommandsJSONBody,
   type Snowflake,
 } from '@discordjs/core'
 import { readdir } from 'fs/promises'
@@ -165,7 +166,7 @@ export function transformCommand(
   }
 }
 
-function transformCommandOptions(options: ChatInputOptions): RESTPostAPIApplicationCommandsJSONBody['options'] {
+function transformCommandOptions(options: ChatInputOptions): RESTPostAPIChatInputApplicationCommandsJSONBody['options'] {
   return options.map(option => {
     const name = transformLocalization(option.name)
     const description = transformLocalization(option.description)
@@ -239,7 +240,7 @@ function transformCommandOptions(options: ChatInputOptions): RESTPostAPIApplicat
       default:
         return base
     }
-  }) as RESTPostAPIApplicationCommandsJSONBody['options']
+  }) as RESTPostAPIChatInputApplicationCommandsJSONBody['options']
 }
 
 function transformLocalization(localization: Localization): {
