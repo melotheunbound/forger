@@ -5,7 +5,7 @@ import type {
   CreateInteractionFollowUpResponseOptions,
   CreateInteractionResponseOptions,
   EditInteractionResponseOptions,
-} from '@discordjs/core/http-only'
+} from '@discordjs/core'
 import type { RequestData } from '@discordjs/rest'
 
 declare module '@discordjs/core' {
