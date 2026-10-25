@@ -1,0 +1,349 @@
+import {
+  ApplicationCommandType,
+  Client,
+  ComponentType,
+  GatewayDispatchEvents,
+  InteractionType,
+  MessageFlags,
+  type APIApplicationCommandAutocompleteInteraction,
+  type APIApplicationCommandInteraction,
+  type APIApplicationCommandInteractionDataBooleanOption,
+  type APIChatInputApplicationCommandInteraction,
+  type APIMessageApplicationCommandInteraction,
+  type APIPrimaryEntryPointCommandInteraction,
+  type APIUserApplicationCommandInteraction,
+} from '@discordjs/core'
+import createGatewayEvent from '../../builders/event'
+import {
+  TimestampStyle,
+  type ApplicationCommand,
+  type ChatInputCommand,
+  type MessageContextMenuCommand,
+  type PrimaryEntryPointCommand,
+  type UserContextMenuCommand,
+} from '../../types/types'
+import env from '../../utils/env'
+import { getChatInputOption, getCommandPath, parseCommandOptions } from '../../utils/utils'
+import { emoji, hyperlink, timestamp } from '../../utils/markdown'
+import { SUPPORT } from '../constants'
+import { redis } from '../../utils/redis'
+import { commands } from '../../builders/command'
+import { checkCooldown } from '../../utils/cooldown'
+import { collectors } from '../../builders/collector'
+
+createGatewayEvent({
+  event: GatewayDispatchEvents.InteractionCreate,
+  async run(interaction, client) {
+    console.log(
+      `Received interaction: ${interaction.id} (${InteractionType[interaction.type]}) from ${interaction.user?.username ?? interaction.member?.user.username} (${interaction.user?.id ?? interaction.member?.user.id})`,
+    )
+
+    switch (interaction.type) {
+      case InteractionType.ApplicationCommand:
+        await handleApplicationCommand(interaction, client)
+        break
+      case InteractionType.ApplicationCommandAutocomplete:
+        await handleChatInputCommandAutocomplete(interaction, client)
+        break
+      case InteractionType.MessageComponent:
+      case InteractionType.ModalSubmit:
+        collectors.forEach(collector => void collector.collect(interaction))
+        break
+      default:
+        console.log('Unknown interaction type', interaction.type)
+        break
+    }
+  },
+})
+
+async function handleApplicationCommand(interaction: APIApplicationCommandInteraction, client: Client) {
+  const command = commands.get(interaction.data.name) as ApplicationCommand
+
+  if (!command) return
+
+  switch (interaction.data.type) {
+    case ApplicationCommandType.ChatInput: {
+      const chatInput = command as ChatInputCommand
+
+      const devIds = env.get('dev_ids', true)!.toArray()
+
+      if (chatInput.dev && !devIds.includes(interaction.user?.id ?? interaction.member?.user.id)) return
+
+      const ephemeral =
+        (
+          getChatInputOption(
+            interaction.data.options ?? [],
+            'ephemeral',
+          ) as APIApplicationCommandInteractionDataBooleanOption
+        )?.value ?? false
+
+      if (chatInput.acknowledge === true) {
+        await client.api.interactions.defer(interaction.id, interaction.token, {
+          flags: chatInput.ephemeral || ephemeral ? MessageFlags.Ephemeral : undefined,
+        })
+      }
+
+      const expiration = checkCooldown(
+        interaction.data.name,
+        (interaction.user?.id ?? interaction.member?.user.id)!,
+        chatInput.cooldown,
+      )
+
+      if (expiration) {
+        await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+          components: [
+            {
+              type: ComponentType.Container,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `${emoji('Exclamation')} Please wait! You're on cooldown for </${interaction.data.name}:${interaction.data.id}>. You can use this command again ${timestamp(expiration, TimestampStyle.RelativeTime)}.`,
+                },
+              ],
+            },
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+
+        return
+      }
+
+      try {
+        await chatInput.run(
+          interaction as APIChatInputApplicationCommandInteraction,
+          parseCommandOptions(interaction as APIChatInputApplicationCommandInteraction),
+          client,
+        )
+      } catch (error) {
+        console.error(`Command ${interaction.data.name} encountered an error:`, error)
+
+        await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+          components: [
+            {
+              type: ComponentType.Container,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `${emoji('Wrong')} ${error instanceof Error ? error.message : String(error)}\n-# If you believe this is a bug, please report it in our **${hyperlink(SUPPORT, 'support server.', '', false)}**`,
+                },
+              ],
+            },
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+      }
+
+      break
+    }
+    case ApplicationCommandType.Message: {
+      const messageContext = command as MessageContextMenuCommand
+
+      const devIds = env.get('dev_ids', true)!.toArray()
+
+      if (messageContext.dev && !devIds.includes(interaction.user?.id ?? interaction.member?.user.id)) return
+
+      if (messageContext.acknowledge) {
+        await client.api.interactions.defer(interaction.id, interaction.token, {
+          flags: messageContext.ephemeral ? MessageFlags.Ephemeral : undefined,
+        })
+      }
+
+      const expiration = checkCooldown(
+        interaction.data.name,
+        (interaction.user?.id ?? interaction.member?.user.id)!,
+        messageContext.cooldown,
+      )
+
+      if (expiration) {
+        await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+          components: [
+            {
+              type: ComponentType.Container,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `${emoji('Exclamation')} Please wait! You're on cooldown for </${interaction.data.name}:${interaction.data.id}>. You can use this command again ${timestamp(expiration, TimestampStyle.RelativeTime)}.`,
+                },
+              ],
+            },
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+
+        return
+      }
+
+      try {
+        await messageContext.run(interaction as APIMessageApplicationCommandInteraction, client)
+      } catch (error) {
+        console.error(`Command ${interaction.data.name} encountered an error:`, error)
+
+        await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+          components: [
+            {
+              type: ComponentType.Container,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `${emoji('Wrong')} ${error instanceof Error ? error.message : String(error)}\n-# If you believe this is a bug, please report it in our **${hyperlink(SUPPORT, 'support server.', '', false)}**`,
+                },
+              ],
+            },
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+      }
+
+      break
+    }
+    case ApplicationCommandType.User: {
+      const userContext = command as UserContextMenuCommand
+
+      const devIds = env.get('dev_ids', true)!.toArray()
+
+      if (userContext.dev && !devIds.includes(interaction.user?.id ?? interaction.member?.user.id)) return
+
+      if (userContext.acknowledge) {
+        await client.api.interactions.defer(interaction.id, interaction.token, {
+          flags: userContext.ephemeral ? MessageFlags.Ephemeral : undefined,
+        })
+      }
+
+      const expiration = checkCooldown(
+        interaction.data.name,
+        (interaction.user?.id ?? interaction.member?.user.id)!,
+        userContext.cooldown,
+      )
+
+      if (expiration) {
+        await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+          components: [
+            {
+              type: ComponentType.Container,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `${emoji('Exclamation')} Please wait! You're on cooldown for </${interaction.data.name}:${interaction.data.id}>. You can use this command again ${timestamp(expiration, TimestampStyle.RelativeTime)}.`,
+                },
+              ],
+            },
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+
+        return
+      }
+
+      try {
+        await userContext.run(interaction as APIUserApplicationCommandInteraction, client)
+      } catch (error) {
+        console.error(`Command ${interaction.data.name} encountered an error:`, error)
+
+        await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+          components: [
+            {
+              type: ComponentType.Container,
+              components: [
+                {
+                  type: ComponentType.TextDisplay,
+                  content: `${emoji('Wrong')} ${error instanceof Error ? error.message : String(error)}\n-# If you believe this is a bug, please report it in our **${hyperlink(SUPPORT, 'support server.', '', false)}**`,
+                },
+              ],
+            },
+          ],
+          flags: MessageFlags.IsComponentsV2,
+        })
+      }
+
+      break
+    }
+    case ApplicationCommandType.PrimaryEntryPoint: {
+      const primaryEntryPoint = command as PrimaryEntryPointCommand
+
+      if (primaryEntryPoint.run) {
+        try {
+          await primaryEntryPoint.run(interaction as APIPrimaryEntryPointCommandInteraction, client)
+        } catch (error) {
+          console.error(`Command ${interaction.data.name} encountered an error:`, error)
+        }
+      }
+
+      break
+    }
+  }
+  /*
+  // analytics
+  const now = Temporal.Now.zonedDateTimeISO('America/Sao_Paulo')
+
+  const analyticsDate = now.hour < 21 ? now.subtract({ days: 1 }) : now
+
+  const day = analyticsDate.toPlainDate().toString()
+  const hour = String(now.hour).padStart(2, '0')
+  const minute = String(now.minute).padStart(2, '0')
+
+  let nextReset = now.with({
+    hour: 21,
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  })
+
+  if (Temporal.ZonedDateTime.compare(now, nextReset) >= 0) nextReset = nextReset.add({ days: 1 })
+
+  const secondsUntilReset = Math.ceil((nextReset.epochMilliseconds - now.epochMilliseconds) / 1000)
+
+  const globalKeys = [
+    `analytics:commands:day:${day}`,
+    `analytics:commands:hour:${day}:${hour}`,
+    `analytics:commands:minute:${day}:${hour}:${minute}`,
+  ]
+
+  for (const key of globalKeys) {
+    const exists = await redis.exists(key)
+
+    await redis.incr(key)
+
+    if (!exists) await redis.expire(key, secondsUntilReset)
+  }
+
+  const extendedCommandName = [
+    interaction.data.name,
+    'options' in interaction.data ? getCommandPath(interaction.data.options) : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const commandKey = `analytics:commands:usage:${interaction.data.id}:day:${day}`
+
+  const exists = await redis.exists(commandKey)
+
+  if (!exists) {
+    await redis.hSet(commandKey, {
+      id: interaction.data.id,
+      name: extendedCommandName,
+      uses: '0',
+    })
+
+    await redis.expire(commandKey, secondsUntilReset)
+  }
+
+  await redis.hIncrBy(commandKey, 'uses', 1)
+  */
+}
+
+async function handleChatInputCommandAutocomplete(
+  interaction: APIApplicationCommandAutocompleteInteraction,
+  client: Client,
+) {
+  const command = commands.get(interaction.data.name) as ChatInputCommand
+
+  if (!command || !command.autocomplete) return
+
+  try {
+    await command.autocomplete(interaction, client)
+  } catch (error) {
+    console.error(`Autocomplete for command ${interaction.data.name} encountered an error:`, error)
+  }
+}

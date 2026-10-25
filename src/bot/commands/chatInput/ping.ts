@@ -1,0 +1,31 @@
+import { ApplicationCommandType, ApplicationIntegrationType, InteractionContextType } from '@discordjs/core'
+import createApplicationCommand from '../../../builders/command'
+import { getShardIdForGuildId } from '../../../utils/shard'
+import { getTimestampFromSnowflake } from '../../../utils/utils'
+
+createApplicationCommand({
+  type: ApplicationCommandType.ChatInput,
+  name: 'ping',
+  description: 'Pong!',
+  integrationTypes: [ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall],
+  contexts: [InteractionContextType.BotDM, InteractionContextType.Guild, InteractionContextType.PrivateChannel],
+  acknowledge: true,
+  async run(interaction, options, client) {
+    // gateway
+    const shardId = interaction.guild_id ? getShardIdForGuildId(interaction.guild_id, client.gateway.shards.size) : 0
+    const wsPing = client.gateway.shards.get(shardId)?.ping
+
+    // rest
+    const restPing = await client.rest.ping()
+
+    // roundtrip
+    const roundtrip = Temporal.Now.instant()
+      .since(Temporal.Instant.fromEpochMilliseconds(getTimestampFromSnowflake(interaction.id)))
+      .total({ unit: 'milliseconds' })
+      .toFixed(0)
+
+    await client.api.interactions.respond(interaction.application_id, interaction.id, interaction.token, {
+      content: `Pong!\n-# Gateway (Shard #${shardId}): **${wsPing}ms** • REST: **${restPing}ms** • Roundtrip: **${roundtrip}ms**`,
+    })
+  },
+})
