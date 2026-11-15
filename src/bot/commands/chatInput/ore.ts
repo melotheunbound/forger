@@ -6,11 +6,11 @@ import {
   InteractionContextType,
   MessageFlags,
   type APIMessageTopLevelComponent,
-  type APISelectMenuOption,
 } from '@discordjs/core'
 import createApplicationCommand from '../../../builders/command'
 import { getAutocompleteFocusedOption } from '../../../utils/utils'
 import { makeRequest } from '../../../utils/request'
+import { formatOreInformation } from '../../../utils/forge'
 import { RequestMethod, ResponseType } from '../../../types/types'
 import env from '../../../utils/env'
 
@@ -99,43 +99,8 @@ createApplicationCommand({
               type: ComponentType.Separator,
             },
             {
-              type: ComponentType.ActionRow,
-              components: [
-                {
-                  type: ComponentType.StringSelect,
-                  custom_id: 'ore_info',
-                  placeholder: 'Ore Information:',
-                  options: [
-                    {
-                      label: 'Chance',
-                      value: 'chance',
-                      description: ore.chance,
-                    },
-                    {
-                      label: 'Multiplier',
-                      value: 'multiplier',
-                      description: `${ore.multiplier}×`,
-                    },
-                    {
-                      label: 'Price',
-                      value: 'price',
-                      description: ore.price,
-                    },
-                    ...(ore.unique_price_multiplier
-                      ? ([
-                          {
-                            label: 'Unique Price Multiplier',
-                            value: 'unique_price_multiplier',
-                            description: `${ore.unique_price_multiplier}×`,
-                          },
-                        ] satisfies APISelectMenuOption[])
-                      : []),
-                  ],
-                },
-              ],
-            },
-            {
-              type: ComponentType.Separator,
+              type: ComponentType.TextDisplay,
+              content: formatOreInformation(ore),
             },
             ...(ore.from.some((source: any) => source.source === 'Rock')
               ? ([
@@ -162,6 +127,14 @@ createApplicationCommand({
                         ),
                       )
                       .join('\n')}`,
+                  },
+                ] satisfies APIMessageTopLevelComponent[])
+              : []),
+            ...(ore.from.some((source: any) => source.source === 'Raid')
+              ? ([
+                  {
+                    type: ComponentType.TextDisplay,
+                    content: `### Raids:\n${[...new Set(ore.from.filter((source: any) => source.source === 'Raid').flatMap((source: any) => source.raid ?? source.region ?? []))].map(raid => `> - ${raid}`).join('\n')}`,
                   },
                 ] satisfies APIMessageTopLevelComponent[])
               : []),

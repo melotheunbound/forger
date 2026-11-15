@@ -11,6 +11,7 @@ import {
 import createApplicationCommand from '../../../builders/command'
 import { getAutocompleteFocusedOption } from '../../../utils/utils'
 import { makeRequest } from '../../../utils/request'
+import { formatForgeLocations } from '../../../utils/forge'
 import { RequestMethod, ResponseType } from '../../../types/types'
 import env from '../../../utils/env'
 
@@ -138,7 +139,7 @@ createApplicationCommand({
               ? ([
                   {
                     type: ComponentType.TextDisplay,
-                    content: `### Craftable At:\n${armor.from.map((world: string) => `> - ${world}`).join('\n')}`,
+                    content: `### Craftable At:\n${formatForgeLocations(armor)}`,
                   },
                 ] satisfies APIMessageTopLevelComponent[])
               : []),
