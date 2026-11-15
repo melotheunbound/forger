@@ -11,6 +11,7 @@ import {
 import createApplicationCommand from '../../../builders/command'
 import { getAutocompleteFocusedOption } from '../../../utils/utils'
 import { makeRequest } from '../../../utils/request'
+import { formatRewardRange } from '../../../utils/forge'
 import { RequestMethod, ResponseType } from '../../../types/types'
 import env from '../../../utils/env'
 
@@ -124,12 +125,12 @@ createApplicationCommand({
                     {
                       label: 'Gold',
                       value: 'gold',
-                      description: `${mob.gold.min} - ${mob.gold.max}`,
+                      description: formatRewardRange(mob.gold),
                     },
                     {
                       label: 'Experience',
                       value: 'experience',
-                      description: `${mob.experience.min} - ${mob.experience.max}`,
+                      description: formatRewardRange(mob.experience),
                     },
                   ] satisfies APISelectMenuOption[],
                 },
@@ -138,6 +139,14 @@ createApplicationCommand({
             {
               type: ComponentType.Separator,
             },
+            ...(mob.reward_note
+              ? ([
+                  {
+                    type: ComponentType.TextDisplay,
+                    content: `${mob.reward_note}${mob.discovery_rewards ? `\nDiscovery: **${mob.discovery_rewards.gold} Gold**, **${mob.discovery_rewards.experience} EXP**` : ''}`,
+                  },
+                ] satisfies APIMessageTopLevelComponent[])
+              : []),
             ...(mob.location?.length
               ? ([
                   {

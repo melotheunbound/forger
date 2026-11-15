@@ -77,7 +77,7 @@ createApplicationCommand({
                     components: [
                       {
                         type: ComponentType.TextDisplay,
-                        content: `## ${race.name}\n-# ${race.rarity} **(${race.drop_rate})**`,
+                        content: `## ${race.name}\n-# ${race.rarity} **(${race.roll_note ? 'Not in ordinary rolls' : race.drop_rate})**`,
                       },
                     ],
                     accessory: {
@@ -91,7 +91,7 @@ createApplicationCommand({
               : ([
                   {
                     type: ComponentType.TextDisplay,
-                    content: `## ${race.name}\n-# ${race.rarity} **(${race.drop_rate})**`,
+                    content: `## ${race.name}\n-# ${race.rarity} **(${race.roll_note ? 'Not in ordinary rolls' : race.drop_rate})**`,
                   },
                 ] satisfies APIMessageTopLevelComponent[])),
             ...(race.perks?.length

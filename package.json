@@ -5,7 +5,10 @@
   "private": true,
   "scripts": {
     "start": "bun src/bot/index.ts",
-    "prettier": "prettier . --write"
+    "prettier": "prettier . --write",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "verify": "bun run typecheck && bun test"
   },
   "devDependencies": {
     "@types/bun": "^1.4.1",
@@ -16,6 +19,9 @@
     "@discordjs/collection": "^2.1.1",
     "@discordjs/core": "^2.6.0",
     "@discordjs/rest": "^2.6.3",
-    "@discordjs/ws": "^2.0.4"
+    "@discordjs/ws": "^2.0.4",
+    "@napi-rs/canvas": "^1.0.8",
+    "chrono-node": "^2.10.1",
+    "sharp": "^0.35.4"
   }
 }

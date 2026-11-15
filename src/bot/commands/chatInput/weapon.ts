@@ -11,6 +11,7 @@ import {
 import createApplicationCommand from '../../../builders/command'
 import { getAutocompleteFocusedOption } from '../../../utils/utils'
 import { makeRequest } from '../../../utils/request'
+import { formatForgeLocations } from '../../../utils/forge'
 import { RequestMethod, ResponseType } from '../../../types/types'
 import env from '../../../utils/env'
 
@@ -114,7 +115,9 @@ createApplicationCommand({
                     { label: 'Chance', value: 'chance', description: weapon.chance },
                     { label: 'Base Price', value: 'base_price', description: weapon.base_price },
                     { label: 'Min Ores', value: 'min_ores', description: weapon.min_ores },
-                    ...(weapon.molds != null ? [{ label: 'Molds', value: 'molds', description: weapon.molds }] : []),
+                    ...(weapon.molds != null
+                      ? [{ label: 'Molds', value: 'molds', description: String(weapon.molds) }]
+                      : []),
                   ] satisfies APISelectMenuOption[],
                 },
               ],
@@ -126,7 +129,7 @@ createApplicationCommand({
               ? ([
                   {
                     type: ComponentType.TextDisplay,
-                    content: `### Craftable At:\n${weapon.from.map((world: string) => `> - ${world}`).join('\n')}`,
+                    content: `### Craftable At:\n${formatForgeLocations(weapon)}`,
                   },
                 ] satisfies APIMessageTopLevelComponent[])
               : []),
